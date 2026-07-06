@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TCR Germline Gene Mapper</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%232563eb'/><text x='32' y='42' font-size='28' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>T</text></svg>" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <h1>TCR Germline Gene Mapper</h1>
+      <p class="tagline">
+        Upload a TCR structure (PDB/mmCIF) or sequence (FASTA) and get back
+        its V(D)J germline gene assignment and inferred CDR3.
+      </p>
+      <nav class="hero-nav">
+        <a href="https://www.imgt.org" target="_blank" rel="noopener">IMGT</a>
+        <span aria-hidden="true">·</span>
+        <a href="https://stcrdab.org" target="_blank" rel="noopener">STCRDab</a>
+        <span aria-hidden="true">·</span>
+        <a href="#" id="api-docs-link">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================== STEP 1: Upload ===================== -->
+    <section id="step-upload" class="card step active">
+      <header class="step-header">
+        <span class="step-num">1</span>
+        <h2>Upload your file</h2>
+      </header>
+      <p class="step-desc">
+        Accepted formats: <code>.pdb</code>, <code>.cif</code>, <code>.fasta</code>,
+        <code>.fa</code>, <code>.txt</code>. Max size 4.5&nbsp;MB.
+      </p>
+
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload file">
+        <svg class="drop-icon" viewBox="0 0 24 24" width="48" height="48" aria-hidden="true">
+          <path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 1 1-8 0V6a4 4 0 0 1 4-4z" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M7 14a5 5 0 0 0 10 0M12 19v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <p class="drop-text">
+          <strong>Drop a file here</strong> or <span class="link">browse</span>
+        </p>
+        <p class="drop-hint">PDB / mmCIF / FASTA</p>
+        <input type="file" id="file-input" hidden
+               accept=".pdb,.ent,.cif,.mmcif,.fasta,.fa,.faa,.fna,.txt" />
+      </div>
+
+      <div id="upload-status" class="upload-status" hidden>
+        <div class="status-row">
+          <strong id="status-filename"></strong>
+          <span id="status-size" class="muted"></span>
+        </div>
+        <div class="status-row">
+          <span>Detected format:</span>
+          <span id="status-format" class="pill"></span>
+        </div>
+        <div class="status-row">
+          <span>Suggested molecule:</span>
+          <span id="status-molecule" class="pill"></span>
+        </div>
+        <ul id="status-notes" class="status-notes"></ul>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 2: Confirm ===================== -->
+    <section id="step-confirm" class="card step" hidden>
+      <header class="step-header">
+        <span class="step-num">2</span>
+        <h2>Confirm file type</h2>
+      </header>
+      <p class="step-desc">
+        We made a best guess. Adjust if needed before processing.
+      </p>
+
+      <div class="form-row">
+        <label for="confirm-format">File format</label>
+        <select id="confirm-format">
+          <option value="pdb">PDB</option>
+          <option value="mmcif">mmCIF</option>
+          <option value="fasta">FASTA</option>
+        </select>
+      </div>
+
+      <div class="form-row" id="molecule-row">
+        <label for="confirm-molecule">Molecule content</label>
+        <select id="confirm-molecule">
+          <option value="tcr_only">TCR only</option>
+          <option value="pmhc_tcr_complex">pMHC–TCR complex</option>
+          <option value="auto">Not sure — auto-detect</option>
+          <option value="fasta">FASTA / sequence</option>
+        </select>
+      </div>
+
+      <div class="form-row" id="chains-row" hidden>
+        <label for="confirm-chains">TCR chain IDs (optional)</label>
+        <input type="text" id="confirm-chains" placeholder="e.g. D,E" />
+        <p class="muted small">
+          Defaults to D,E (IMGT/STCRDab convention). Comma-separated.
+        </p>
+      </div>
+
+      <div class="form-actions">
+        <button id="btn-back" class="btn btn-ghost">← Back</button>
+        <button id="btn-process" class="btn btn-primary">Map genes →</button>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 3: Results ===================== -->
+    <section id="step-results" class="card step" hidden>
+      <header class="step-header">
+        <span class="step-num">3</span>
+        <h2>Germline mapping results</h2>
+      </header>
+
+      <div id="processing-indicator" class="processing" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Aligning against IMGT germline database…</p>
+        <p class="muted small">First request after inactivity may take 2-3 s (cold start).</p>
+      </div>
+
+      <div id="results-area" hidden>
+        <div class="results-meta">
+          <span id="results-elapsed" class="muted"></span>
+          <span id="results-chaincount" class="muted"></span>
+        </div>
+        <div id="results-chains"></div>
+
+        <details id="warnings-details" hidden>
+          <summary>Warnings & notes (<span id="warning-count">0</span>)</summary>
+          <ul id="warnings-list"></ul>
+        </details>
+
+        <details id="reference-details">
+          <summary>Reference database info</summary>
+          <pre id="reference-pre"></pre>
+        </details>
+
+        <div class="form-actions">
+          <button id="btn-reset" class="btn btn-ghost">↺ Start over</button>
+          <button id="btn-download-json" class="btn btn-secondary">Download JSON</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== Limitations ===================== -->
+    <section class="card limitations">
+      <h3>Known limitations</h3>
+      <ul>
+        <li><strong>D-gene calls</strong> are inherently low-confidence from protein sequence alone — always labelled "best guess".</li>
+        <li><strong>PDB gaps</strong> in crystal structures can truncate extracted sequences.</li>
+        <li><strong>Serverless payload limit</strong>: files larger than 4.5&nbsp;MB are rejected with HTTP 413.</li>
+        <li><strong>Cold starts</strong>: first request after inactivity takes 2–3&nbsp;s.</li>
+        <li>This is a research tool, <strong>not a clinical or diagnostic device</strong>.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Built with FastAPI, Biopython's <code>PairwiseAligner</code>, and a
+      vanilla-JS frontend. Deployable on Vercel free tier.
+    </p>
+  </footer>
+
+  <dialog id="api-dialog">
+    <article>
+      <header>
+        <h3>API endpoints</h3>
+        <button id="api-dialog-close" class="btn btn-ghost btn-small" aria-label="Close">×</button>
+      </header>
+      <ul class="api-list">
+        <li><code>POST /api/upload</code> — upload a file, get back a best-guess type</li>
+        <li><code>POST /api/process</code> — run the full pipeline (multipart form)</li>
+        <li><code>POST /api/process-json</code> — run the full pipeline (JSON+base64)</li>
+        <li><code>GET /api/health</code> — liveness check</li>
+        <li><code>GET /api/reference-info</code> — bundled IMGT germline DB metadata</li>
+      </ul>
+      <p class="muted small">When running locally on port 5173, prefix with <code>http://localhost:8000</code>.</p>
+    </article>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

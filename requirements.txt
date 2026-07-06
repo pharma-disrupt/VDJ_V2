@@ -1,0 +1,10 @@
+# TCR Germline Gene Mapper - Python dependencies
+# Serverless-friendly: pure-Python packages, no system binaries required.
+
+biopython>=1.83
+fastapi>=0.110.0
+mangum>=0.17.0
+python-multipart>=0.0.9
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+uvicorn>=0.29.0
